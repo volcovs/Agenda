@@ -110,11 +110,13 @@ class DashboardViewModel(private val repository: AgendaRepository) : ViewModel()
     fun previousDay() { selectedDate.value = selectedDate.value.minusDays(1) }
     fun nextDay() { selectedDate.value = selectedDate.value.plusDays(1) }
     fun goToToday() { selectedDate.value = today }
+    fun selectDate(date: LocalDate) { selectedDate.value = date }
 
     fun toggleTask(id: Long) = viewModelScope.launch { repository.toggleTask(id) }
-    fun addTask(text: String, someday: Boolean = false) =
-        viewModelScope.launch { repository.addTask(if (someday) null else selectedDate.value, text) }
-    fun addFocus(text: String) = viewModelScope.launch { repository.addFocus(selectedDate.value, text) }
+    fun addTask(text: String, date: LocalDate?, projectId: Long? = null) =
+        viewModelScope.launch { repository.addTask(date, text, projectId) }
+    fun setTaskProject(id: Long, projectId: Long?) =
+        viewModelScope.launch { repository.setTaskProject(id, projectId) }
     fun addNote(text: String, links: NoteLinks = NoteLinks()) =
         viewModelScope.launch { repository.setNote(selectedDate.value, text, uiState.value.now, links) }
     fun addEvent(event: Event) = viewModelScope.launch { repository.addEvent(selectedDate.value, event) }

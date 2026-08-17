@@ -32,6 +32,7 @@ import com.personalagenda.app.data.Project
 import com.personalagenda.app.data.Task
 import com.personalagenda.app.ui.theme.AgendaTheme
 import java.time.Duration
+import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -58,20 +59,24 @@ fun RightColumn(
     onPrevDay: () -> Unit,
     onNextDay: () -> Unit,
     onToday: () -> Unit,
+    onAddClick: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier) {
         Greeting(agenda, now, isToday, onPrevDay, onNextDay, onToday)
         Spacer(Modifier.height(24.dp))
         if (agenda.events.isEmpty()) {
-            EmptyDay()
+            EmptyDay(onAddClick)
         } else {
-            RightNow(agenda, now)
-            Spacer(Modifier.height(32.dp))
-            Timeline(agenda, now, onEventClick)
+            // "Right now" is only meaningful for today; other days show just the schedule.
+            if (isToday) {
+                RightNow(agenda, now)
+                Spacer(Modifier.height(32.dp))
+            }
+            Timeline(agenda, now, isToday, onEventClick)
         }
         Spacer(Modifier.height(32.dp))
-        FocusAndTasks(agenda, onToggleTask, onTaskLongPress)
+        Tasks(agenda, onToggleTask, onTaskLongPress)
         Spacer(Modifier.height(32.dp))
         ProjectsAndNote(agenda)
         Spacer(Modifier.height(28.dp))
@@ -271,14 +276,22 @@ private fun DayComplete(agenda: DayAgenda) {
 
 /** The calm "your day is clear" state, shown when no events are scheduled. */
 @Composable
-private fun EmptyDay() {
+private fun EmptyDay(onAddClick: () -> Unit) {
     val colors = AgendaTheme.colors
     Column(Modifier.fillMaxWidth().padding(vertical = 40.dp)) {
         Text("Your day is clear", style = AgendaTheme.type.display, color = colors.textPrimary)
         Spacer(Modifier.height(10.dp))
         Text("Nothing scheduled yet.", style = AgendaTheme.type.body, color = colors.textSecondary)
         Spacer(Modifier.height(24.dp))
-        Text("+ Add something", style = AgendaTheme.type.bodyStrong, color = colors.personal)
+        Text(
+            "+ Add something",
+            style = AgendaTheme.type.bodyStrong,
+            color = colors.personal,
+            modifier = Modifier
+                .clip(RoundedCornerShape(50))
+                .clickable(onClick = onAddClick)
+                .padding(vertical = 6.dp, horizontal = 4.dp),
+        )
     }
 }
 
@@ -301,7 +314,6 @@ private fun BottomSummary(agenda: DayAgenda) {
         Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) {
             SummaryMetric(agenda.events.size.toString(), "events")
             SummaryMetric(agenda.tasks.count { !it.done }.toString(), "tasks")
-            SummaryMetric(agenda.focus.size.toString(), "focus")
             SummaryMetric(scheduledLabel, "scheduled")
         }
     }
@@ -319,20 +331,28 @@ private fun SummaryMetric(value: String, label: String) {
 
 /** Journal-like timeline with a thin vertical spine and a NOW marker. */
 @Composable
-private fun Timeline(agenda: DayAgenda, now: LocalTime, onEventClick: (Event) -> Unit) {
-    SectionLabel("Today")
+private fun Timeline(agenda: DayAgenda, now: LocalTime, isToday: Boolean, onEventClick: (Event) -> Unit) {
+    SectionLabel(if (isToday) "Today" else "Schedule")
     Spacer(Modifier.height(16.dp))
+
+    // For other days there is no "now": a past day is entirely done, a future day
+    // entirely ahead. Only today uses the live clock (and shows the NOW marker).
+    val stateNow = when {
+        isToday -> now
+        agenda.date.isBefore(LocalDate.now()) -> LocalTime.MAX
+        else -> LocalTime.MIN
+    }
 
     var nowShown = false
     Column {
         agenda.events.forEach { event ->
-            if (!nowShown && event.start.isAfter(now)) {
+            if (isToday && !nowShown && event.start.isAfter(now)) {
                 NowLine()
                 nowShown = true
             }
-            TimelineRow(event, event.stateAt(now), onClick = { onEventClick(event) })
+            TimelineRow(event, event.stateAt(stateNow), onClick = { onEventClick(event) })
         }
-        if (!nowShown) NowLine()
+        if (isToday && !nowShown) NowLine()
     }
 }
 
@@ -410,37 +430,6 @@ private fun NowLine() {
         Text("NOW", style = AgendaTheme.type.tiny, color = colors.deadline)
         Spacer(Modifier.width(10.dp))
         Box(Modifier.weight(1f).height(1.dp).background(colors.deadline.copy(alpha = 0.4f)))
-    }
-}
-
-@Composable
-private fun FocusAndTasks(
-    agenda: DayAgenda,
-    onToggleTask: (Long) -> Unit,
-    onTaskLongPress: (Task) -> Unit,
-) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(40.dp)) {
-        Column(Modifier.weight(1f)) { Focus(agenda) }
-        Column(Modifier.weight(1f)) { Tasks(agenda, onToggleTask, onTaskLongPress) }
-    }
-}
-
-@Composable
-private fun Focus(agenda: DayAgenda) {
-    if (agenda.focus.isEmpty()) return
-    val colors = AgendaTheme.colors
-    SectionLabel("Focus")
-    Spacer(Modifier.height(16.dp))
-    agenda.focus.take(3).forEachIndexed { i, item ->
-        Row(Modifier.fillMaxWidth().padding(vertical = 7.dp)) {
-            Text(
-                "%02d".format(i + 1),
-                style = AgendaTheme.type.secondary,
-                color = colors.textFaint,
-                modifier = Modifier.width(32.dp),
-            )
-            Text(item.text, style = AgendaTheme.type.body, color = colors.textPrimary)
-        }
     }
 }
 
@@ -524,10 +513,16 @@ private fun ProjectItem(project: Project) {
     Text(project.name, style = AgendaTheme.type.secondary, color = colors.textPrimary, fontWeight = FontWeight.Medium)
     Spacer(Modifier.height(8.dp))
     ThinProgressBar(
-        progress = project.progress,
+        progress = project.effectiveProgress,
         track = colors.divider,
         fill = project.category.color(colors),
         height = 6,
+    )
+    Spacer(Modifier.height(6.dp))
+    Text(
+        if (project.hasTasks) "${project.linkedTasksDone}/${project.linkedTasksTotal} tasks" else "No tasks yet",
+        style = AgendaTheme.type.tiny,
+        color = colors.textFaint,
     )
 }
 

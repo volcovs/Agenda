@@ -13,7 +13,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ProjectEntity::class,
         NoteEntity::class,
     ],
-    version = 5,
+    version = 8,
     exportSchema = false,
 )
 abstract class AgendaDatabase : RoomDatabase() {
@@ -59,6 +59,69 @@ abstract class AgendaDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE `notes` ADD COLUMN `eventId` INTEGER")
                 db.execSQL("ALTER TABLE `notes` ADD COLUMN `taskId` INTEGER")
+            }
+        }
+
+        /** v5 → v6: allow a task to link to a project (JIRA-style progress). */
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `tasks` ADD COLUMN `projectId` INTEGER")
+            }
+        }
+
+        /**
+         * v6 → v7: sync groundwork. Add a stable `uid` (globally-unique id) and an
+         * `updatedAt` millis timestamp to every table, and backfill existing rows.
+         * Both nullable, so plain ADD COLUMN suffices (no default clause to match).
+         */
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                val tables = listOf("events", "tasks", "focus_items", "projects", "notes")
+                for (t in tables) {
+                    db.execSQL("ALTER TABLE `$t` ADD COLUMN `uid` TEXT")
+                    db.execSQL("ALTER TABLE `$t` ADD COLUMN `updatedAt` INTEGER")
+                    // Backfill: a random 16-byte hex id, and "now" in millis.
+                    db.execSQL("UPDATE `$t` SET `uid` = lower(hex(randomblob(16))) WHERE `uid` IS NULL")
+                    db.execSQL("UPDATE `$t` SET `updatedAt` = (strftime('%s','now') * 1000) WHERE `updatedAt` IS NULL")
+                }
+            }
+        }
+
+        /**
+         * v7 → v8: sync tombstones + uid-based foreign keys. Add `deleted` (NOT NULL
+         * DEFAULT 0 — matches the entities' @ColumnInfo(defaultValue="0")) to the four
+         * synced tables, and `*Uid` link columns backfilled from the existing Long FKs.
+         */
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                for (t in listOf("events", "tasks", "projects", "notes")) {
+                    db.execSQL("ALTER TABLE `$t` ADD COLUMN `deleted` INTEGER NOT NULL DEFAULT 0")
+                }
+                db.execSQL("ALTER TABLE `tasks` ADD COLUMN `projectUid` TEXT")
+                db.execSQL("ALTER TABLE `notes` ADD COLUMN `projectUid` TEXT")
+                db.execSQL("ALTER TABLE `notes` ADD COLUMN `eventUid` TEXT")
+                db.execSQL("ALTER TABLE `notes` ADD COLUMN `taskUid` TEXT")
+                // Backfill link uids from the current Long foreign keys.
+                db.execSQL(
+                    "UPDATE `tasks` SET `projectUid` = " +
+                        "(SELECT `uid` FROM `projects` WHERE `projects`.`id` = `tasks`.`projectId`) " +
+                        "WHERE `projectId` IS NOT NULL"
+                )
+                db.execSQL(
+                    "UPDATE `notes` SET `projectUid` = " +
+                        "(SELECT `uid` FROM `projects` WHERE `projects`.`id` = `notes`.`projectId`) " +
+                        "WHERE `projectId` IS NOT NULL"
+                )
+                db.execSQL(
+                    "UPDATE `notes` SET `eventUid` = " +
+                        "(SELECT `uid` FROM `events` WHERE `events`.`id` = `notes`.`eventId`) " +
+                        "WHERE `eventId` IS NOT NULL"
+                )
+                db.execSQL(
+                    "UPDATE `notes` SET `taskUid` = " +
+                        "(SELECT `uid` FROM `tasks` WHERE `tasks`.`id` = `notes`.`taskId`) " +
+                        "WHERE `taskId` IS NOT NULL"
+                )
             }
         }
     }
