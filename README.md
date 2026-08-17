@@ -9,15 +9,17 @@ notes and reflections in one beautifully organized place.
 
 Personal Agenda is designed to answer three questions the moment you open it:
 
-- **Where am I in time?** — a live date, a real‑time analog clock, and a month calendar.
+- **Where am I in time?** — a live date, a real‑time analog clock, and a month calendar you
+  can tap to jump to any day (its tasks and events load beside it).
 - **What's happening now?** — the signature **Right Now** card shows your current event
   with a live progress bar, and gracefully becomes *Up Next* or *Day complete* as the day unfolds.
-- **What deserves my attention?** — today's focus, tasks, projects and a quick note, all at a glance.
+- **What deserves my attention?** — today's tasks, projects and a quick note, all at a glance.
 
 ## Screens
 
-- **Agenda** — the dashboard above: month calendar, Right Now, a journal‑style timeline with a
-  live "now" marker, plus focus, tasks, projects and a quick note. Step through days with ‹ ›.
+- **Agenda** — the dashboard above: a tappable month calendar, Right Now, a journal‑style
+  timeline with a live "now" marker, plus tasks, projects and a quick note. Step through days
+  with ‹ › or tap a date on the calendar.
 - **Calendar** — a paper‑agenda weekly spread: a grid of day cells (untimed tasks on the
   left, timed events on the right), scrollable per day, paging two weeks at a time.
 - **Tasks** — grouped into Today / Upcoming / Someday / Completed.
@@ -61,6 +63,13 @@ project and is git‑ignored). To build, create your own free Firebase project a
 3. Create a **Firestore Database**, and publish the rules in [`firestore.rules`](firestore.rules).
 4. Download **`google-services.json`** into the `app/` folder.
 
+Add a SHA‑1 for **each** signing key you use — the debug key **and** your release key — or
+Google Sign‑In will fail on that build. Get the release key's fingerprint with:
+
+```bash
+keytool -list -v -keystore <your-release-keystore>.jks -alias <your-alias>
+```
+
 The app runs fully offline without signing in; Firebase is only used when you sign in to sync.
 
 ## Running from source
@@ -94,4 +103,18 @@ _If the build complains about the Java version, point it at JDK 17:_
 ```bash
 JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk-17.jdk/Contents/Home ./gradlew assembleDebug
 ```
+
+### A signed release APK
+
+The release build must be signed with your own keystore (never commit it — this repo
+git‑ignores `*.jks`). The simplest route is **Android Studio → Build → Generate Signed
+App Bundle / APK → APK**, pick your keystore, and choose the `release` variant. The APK
+lands at:
+
+```
+app/build/outputs/apk/release/app-release.apk
+```
+
+Make sure your release key's **SHA‑1 is registered in Firebase** (see *Firebase setup* above),
+otherwise Google sign‑in / sync won't work in the release build.
 
