@@ -21,9 +21,13 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimeInput
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -40,33 +44,46 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.personalagenda.app.data.Category
 import com.personalagenda.app.data.Event
+import com.personalagenda.app.data.Project
 import com.personalagenda.app.ui.theme.AgendaTheme
+import java.time.Instant
+import java.time.LocalDate
 import java.time.LocalTime
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 enum class QuickAddType(val label: String) {
-    TASK("Task"), NOTE("Note"), FOCUS("Focus"), EVENT("Event")
+    TASK("Task"), NOTE("Note"), EVENT("Event")
 }
 
 /** The outcome of a Quick Add, so each kind can carry the fields it needs. */
 sealed interface QuickAddResult {
-    data class AddTask(val text: String, val someday: Boolean) : QuickAddResult
+    /** [date] is null for a "Someday" (undated) task; [projectId] links it to a project. */
+    data class AddTask(val text: String, val date: LocalDate?, val projectId: Long?) : QuickAddResult
     data class AddNote(val text: String) : QuickAddResult
-    data class AddFocus(val text: String) : QuickAddResult
     data class NewEvent(val event: Event) : QuickAddResult
 }
+
+private val taskDateFmt = DateTimeFormatter.ofPattern("EEE, MMM d", Locale.ENGLISH)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun QuickAddDialog(
     onDismiss: () -> Unit,
     onSubmit: (QuickAddResult) -> Unit,
+    defaultDate: LocalDate = LocalDate.now(),
+    projects: List<Project> = emptyList(),
 ) {
     val colors = AgendaTheme.colors
     var type by remember { mutableStateOf(QuickAddType.TASK) }
 
     // Simple (text-only) state
     var text by remember { mutableStateOf("") }
-    var someday by remember { mutableStateOf(false) }
+    // Task scheduling: a concrete date, or null for "Someday".
+    var taskDate by remember { mutableStateOf<LocalDate?>(defaultDate) }
+    var taskProjectId by remember { mutableStateOf<Long?>(null) }
+    var showDatePicker by remember { mutableStateOf(false) }
 
     // Event state
     var eventTitle by remember { mutableStateOf("") }
@@ -96,9 +113,8 @@ fun QuickAddDialog(
                     category = eventCategory,
                 )
             )
-            QuickAddType.TASK -> QuickAddResult.AddTask(text.trim(), someday)
+            QuickAddType.TASK -> QuickAddResult.AddTask(text.trim(), taskDate, taskProjectId)
             QuickAddType.NOTE -> QuickAddResult.AddNote(text.trim())
-            QuickAddType.FOCUS -> QuickAddResult.AddFocus(text.trim())
         }
         onSubmit(result)
         onDismiss()
@@ -145,7 +161,6 @@ fun QuickAddDialog(
                     placeholder = when (type) {
                         QuickAddType.TASK -> "What needs doing?"
                         QuickAddType.NOTE -> "Write a quick note…"
-                        QuickAddType.FOCUS -> "What actually matters today?"
                         QuickAddType.EVENT -> ""
                     },
                     singleLine = type != QuickAddType.NOTE,
@@ -157,8 +172,27 @@ fun QuickAddDialog(
                     FieldLabel("When")
                     Spacer(Modifier.height(10.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        TypeChip("Today", selected = !someday, onClick = { someday = false })
-                        TypeChip("Someday", selected = someday, onClick = { someday = true })
+                        TypeChip(
+                            label = taskDate?.format(taskDateFmt) ?: "Pick a date",
+                            selected = taskDate != null,
+                            onClick = { showDatePicker = true },
+                        )
+                        TypeChip("Someday", selected = taskDate == null, onClick = { taskDate = null })
+                    }
+
+                    if (projects.isNotEmpty()) {
+                        Spacer(Modifier.height(18.dp))
+                        FieldLabel("Project")
+                        Spacer(Modifier.height(10.dp))
+                        Row(
+                            Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            TypeChip("None", selected = taskProjectId == null, onClick = { taskProjectId = null })
+                            projects.forEach { p ->
+                                TypeChip(p.name, selected = taskProjectId == p.id, onClick = { taskProjectId = p.id })
+                            }
+                        }
                     }
                 }
             }
@@ -170,6 +204,28 @@ fun QuickAddDialog(
                 Spacer(Modifier.width(8.dp))
                 TextAction("Add", muted = false, enabled = canSubmit, onClick = { submit() })
             }
+        }
+    }
+
+    if (showDatePicker) {
+        val dpState = rememberDatePickerState(
+            initialSelectedDateMillis = (taskDate ?: defaultDate).toEpochDay() * 86_400_000L,
+        )
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    dpState.selectedDateMillis?.let {
+                        taskDate = Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate()
+                    }
+                    showDatePicker = false
+                }) { Text("OK") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) { Text("Cancel") }
+            },
+        ) {
+            DatePicker(state = dpState)
         }
     }
 }

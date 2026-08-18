@@ -49,6 +49,7 @@ private val headerDateFmt = DateTimeFormatter.ofPattern("EEEE · MMMM d, yyyy", 
 @Composable
 fun DashboardScreen(
     uiState: DashboardUiState = DashboardUiState(),
+    projects: List<com.personalagenda.app.data.Project> = emptyList(),
     modifier: Modifier = Modifier,
     onToggleTask: (Long) -> Unit = {},
     onQuickAdd: (QuickAddResult) -> Unit = {},
@@ -56,12 +57,18 @@ fun DashboardScreen(
     onDeleteEvent: (Long) -> Unit = {},
     onRenameTask: (Long, String) -> Unit = { _, _ -> },
     onDeleteTask: (Long) -> Unit = {},
+    onSetTaskProject: (Long, Long?) -> Unit = { _, _ -> },
     currentTheme: AppThemeOption = AppThemeOption.SYSTEM,
     onThemeChange: (AppThemeOption) -> Unit = {},
     onOpenSearch: () -> Unit = {},
     onPrevDay: () -> Unit = {},
     onNextDay: () -> Unit = {},
     onToday: () -> Unit = {},
+    onSelectDay: (java.time.LocalDate) -> Unit = {},
+    syncConfigured: Boolean = false,
+    accountEmail: String? = null,
+    onSignIn: () -> Unit = {},
+    onSignOut: () -> Unit = {},
 ) {
     val colors = AgendaTheme.colors
     val isToday = uiState.agenda.date == java.time.LocalDate.now()
@@ -105,12 +112,17 @@ fun DashboardScreen(
                     onPrevDay = onPrevDay,
                     onNextDay = onNextDay,
                     onToday = onToday,
+                    onAddClick = { showQuickAdd = true },
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(28.dp))
                 Box(Modifier.fillMaxWidth().height(1.dp).background(colors.divider))
                 Spacer(Modifier.height(28.dp))
-                LeftColumn(agenda = uiState.agenda, modifier = Modifier.fillMaxWidth())
+                LeftColumn(
+                    agenda = uiState.agenda,
+                    onSelectDay = onSelectDay,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
         } else {
             Row(
@@ -121,6 +133,7 @@ fun DashboardScreen(
                 // Left column ~36%
                 LeftColumn(
                     agenda = uiState.agenda,
+                    onSelectDay = onSelectDay,
                     modifier = Modifier
                         .weight(0.36f)
                         .fillMaxHeight()
@@ -146,6 +159,7 @@ fun DashboardScreen(
                     onPrevDay = onPrevDay,
                     onNextDay = onNextDay,
                     onToday = onToday,
+                    onAddClick = { showQuickAdd = true },
                     modifier = Modifier
                         .weight(0.64f)
                         .fillMaxHeight()
@@ -160,6 +174,8 @@ fun DashboardScreen(
         QuickAddDialog(
             onDismiss = { showQuickAdd = false },
             onSubmit = onQuickAdd,
+            defaultDate = uiState.agenda.date,
+            projects = projects,
         )
     }
 
@@ -175,8 +191,10 @@ fun DashboardScreen(
     editingTask?.let { task ->
         TaskEditorDialog(
             task = task,
+            projects = projects,
             onRename = onRenameTask,
             onDelete = onDeleteTask,
+            onSetProject = onSetTaskProject,
             onDismiss = { editingTask = null },
         )
     }
@@ -187,6 +205,10 @@ fun DashboardScreen(
             systemDark = isSystemInDarkTheme(),
             onSelect = onThemeChange,
             onDismiss = { showSettings = false },
+            syncConfigured = syncConfigured,
+            accountEmail = accountEmail,
+            onSignIn = onSignIn,
+            onSignOut = onSignOut,
         )
     }
 }

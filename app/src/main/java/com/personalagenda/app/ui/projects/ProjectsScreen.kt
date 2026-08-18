@@ -149,9 +149,19 @@ private fun ProjectCard(project: Project, onClick: () -> Unit) {
         }
 
         Spacer(Modifier.height(16.dp))
-        ThinProgressBar(progress = project.progress, track = colors.divider, fill = accent, height = 6)
-        Spacer(Modifier.height(6.dp))
-        Text("${(project.progress * 100).roundToInt()}%", style = AgendaTheme.type.tiny, color = colors.textFaint)
+        if (project.hasTasks) {
+            ThinProgressBar(progress = project.effectiveProgress, track = colors.divider, fill = accent, height = 6)
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "${(project.effectiveProgress * 100).roundToInt()}% · ${project.linkedTasksDone}/${project.linkedTasksTotal} tasks",
+                style = AgendaTheme.type.tiny,
+                color = colors.textFaint,
+            )
+        } else {
+            ThinProgressBar(progress = 0f, track = colors.divider, fill = accent, height = 6)
+            Spacer(Modifier.height(6.dp))
+            Text("No tasks yet", style = AgendaTheme.type.tiny, color = colors.textFaint)
+        }
 
         if (project.nextAction != null) {
             Spacer(Modifier.height(14.dp))

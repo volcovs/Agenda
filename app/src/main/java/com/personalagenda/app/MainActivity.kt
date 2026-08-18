@@ -1,6 +1,8 @@
 package com.personalagenda.app
 
+import android.app.Activity
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -15,13 +17,16 @@ import android.content.res.Configuration
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import kotlinx.coroutines.launch
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -74,12 +79,27 @@ private fun AppRoot(theme: AppThemeOption, onThemeChange: (AppThemeOption) -> Un
     val section = Section.entries[sectionIndex]
     var showSearch by remember { mutableStateOf(false) }
 
+    // Account / sync state.
+    val context = LocalContext.current
+    val app = context.applicationContext as AgendaApp
+    val authUser by app.authManager.user.collectAsState()
+    val scope = rememberCoroutineScope()
+    val onSignIn: () -> Unit = {
+        (context as? Activity)?.let { activity ->
+            scope.launch {
+                app.authManager.signInWithGoogle(activity).onFailure {
+                    Toast.makeText(context, it.message ?: "Sign-in failed", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+    val onSignOut: () -> Unit = { scope.launch { app.authManager.signOut() } }
+
     val onQuickAdd: (QuickAddResult) -> Unit = { result ->
         when (result) {
             is QuickAddResult.NewEvent -> vm.addEvent(result.event)
-            is QuickAddResult.AddTask -> vm.addTask(result.text, result.someday)
+            is QuickAddResult.AddTask -> vm.addTask(result.text, result.date, result.projectId)
             is QuickAddResult.AddNote -> vm.addNote(result.text)
-            is QuickAddResult.AddFocus -> vm.addFocus(result.text)
         }
     }
 
@@ -93,25 +113,34 @@ private fun AppRoot(theme: AppThemeOption, onThemeChange: (AppThemeOption) -> Un
             when (section) {
                 Section.AGENDA -> DashboardScreen(
                     uiState = uiState,
+                    projects = projects,
                     onToggleTask = { id -> vm.toggleTask(id) },
                     onQuickAdd = onQuickAdd,
                     onUpdateEvent = { event -> vm.updateEvent(event) },
                     onDeleteEvent = { id -> vm.deleteEvent(id) },
                     onRenameTask = { id, text -> vm.renameTask(id, text) },
                     onDeleteTask = { id -> vm.deleteTask(id) },
+                    onSetTaskProject = { id, projectId -> vm.setTaskProject(id, projectId) },
                     currentTheme = theme,
                     onThemeChange = onThemeChange,
                     onOpenSearch = { showSearch = true },
                     onPrevDay = { vm.previousDay() },
                     onNextDay = { vm.nextDay() },
                     onToday = { vm.goToToday() },
+                    onSelectDay = { date -> vm.selectDate(date) },
+                    syncConfigured = app.authManager.isConfigured,
+                    accountEmail = authUser?.email,
+                    onSignIn = onSignIn,
+                    onSignOut = onSignOut,
                 )
                 Section.TASKS -> TasksScreen(
                     tasks = tasks,
                     today = vm.todayDate,
+                    projects = projects,
                     onToggle = { id -> vm.toggleTask(id) },
                     onRename = { id, text -> vm.renameTask(id, text) },
                     onDelete = { id -> vm.deleteTask(id) },
+                    onSetTaskProject = { id, projectId -> vm.setTaskProject(id, projectId) },
                     onQuickAdd = onQuickAdd,
                 )
                 Section.CALENDAR -> CalendarRoute()

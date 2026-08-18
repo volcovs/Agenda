@@ -30,24 +30,50 @@ data class Event(
     val id: Long = 0,
 )
 
-data class FocusItem(val text: String)
-
-data class Task(val text: String, val done: Boolean = false, val id: Long = 0)
+data class Task(
+    val text: String,
+    val done: Boolean = false,
+    val id: Long = 0,
+    /** Optional link to a [Project] (null = unlinked). */
+    val projectId: Long? = null,
+)
 
 /** A task carrying its date — used by the Tasks screen to group across days.
  *  A null [date] means the task is "Someday" (undated). */
-data class DatedTask(val id: Long, val text: String, val done: Boolean, val date: LocalDate?)
+data class DatedTask(
+    val id: Long,
+    val text: String,
+    val done: Boolean,
+    val date: LocalDate?,
+    /** Optional link to a [Project] (null = unlinked). */
+    val projectId: Long? = null,
+)
 
 data class Project(
     val name: String,
-    val progress: Float, // 0f..1f
+    val progress: Float, // 0f..1f — legacy field, no longer editable; kept for storage compat
     val category: Category,
     val description: String? = null,
     val status: String? = null,
     val nextAction: String? = null,
     val deadline: LocalDate? = null,
     val id: Long = 0,
-)
+    /** Number of tasks linked to this project (JIRA-style). */
+    val linkedTasksTotal: Int = 0,
+    /** How many of those linked tasks are done. */
+    val linkedTasksDone: Int = 0,
+) {
+    /** True once at least one task is linked — otherwise there is no progress to show. */
+    val hasTasks: Boolean get() = linkedTasksTotal > 0
+
+    /**
+     * Progress is always driven by linked-task completion (done / total).
+     * A project with no linked tasks has no progress (0f); the UI shows
+     * "No tasks yet" rather than a percentage.
+     */
+    val effectiveProgress: Float
+        get() = if (linkedTasksTotal > 0) linkedTasksDone.toFloat() / linkedTasksTotal else 0f
+}
 
 data class QuickNote(val text: String, val time: LocalTime)
 
@@ -81,15 +107,23 @@ data class InsightsData(
     val byCategoryMinutes: List<Pair<Category, Int>> = emptyList(), // desc, only > 0
 )
 
+/**
+ * One day in the weekly-spread Calendar view: untimed [tasks] on one side,
+ * timed [events] on the other.
+ */
+data class DaySpread(
+    val date: LocalDate,
+    val events: List<Event>,
+    val tasks: List<Task>,
+)
+
 /** A single day's worth of agenda content. */
 data class DayAgenda(
     val date: LocalDate,
     val events: List<Event>,
-    val focus: List<FocusItem>,
     val tasks: List<Task>,
     val projects: List<Project>,
     val quickNote: QuickNote?,
-    val weekWorkload: List<Pair<String, Float>>, // day label -> 0f..1f busyness
 )
 
 /**
@@ -133,11 +167,6 @@ object MockData {
                 category = Category.LEARNING,
             ),
         ),
-        focus = listOf(
-            FocusItem("Finish the quarterly report"),
-            FocusItem("Review design feedback"),
-            FocusItem("Plan the week ahead"),
-        ),
         tasks = listOf(
             Task("Reply to emails"),
             Task("Book dentist appointment"),
@@ -152,13 +181,6 @@ object MockData {
         quickNote = QuickNote(
             "Send the invoice before Friday.",
             LocalTime.of(14, 42),
-        ),
-        weekWorkload = listOf(
-            "Mon" to 0.9f,
-            "Tue" to 0.5f,
-            "Wed" to 0.8f,
-            "Thu" to 0.3f,
-            "Fri" to 0.6f,
         ),
     )
 
@@ -176,10 +198,8 @@ object MockData {
     val emptyDay = DayAgenda(
         date = LocalDate.of(2026, 8, 15),
         events = emptyList(),
-        focus = emptyList(),
         tasks = emptyList(),
         projects = day.projects,
         quickNote = null,
-        weekWorkload = day.weekWorkload,
     )
 }

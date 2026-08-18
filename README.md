@@ -9,18 +9,22 @@ notes and reflections in one beautifully organized place.
 
 Personal Agenda is designed to answer three questions the moment you open it:
 
-- **Where am I in time?** — a live date, a real‑time analog clock, and a month calendar.
+- **Where am I in time?** — a live date, a real‑time analog clock, and a month calendar you
+  can tap to jump to any day (its tasks and events load beside it).
 - **What's happening now?** — the signature **Right Now** card shows your current event
   with a live progress bar, and gracefully becomes *Up Next* or *Day complete* as the day unfolds.
-- **What deserves my attention?** — today's focus, tasks, projects and a quick note, all at a glance.
+- **What deserves my attention?** — today's tasks, projects and a quick note, all at a glance.
 
 ## Screens
 
-- **Agenda** — the dashboard above: month calendar, Right Now, a journal‑style timeline with a
-  live "now" marker, plus focus, tasks, projects and a quick note. Step through days with ‹ ›.
-- **Calendar** — a full month grid with per‑day activity dots and the selected day's schedule.
+- **Agenda** — the dashboard above: a tappable month calendar, Right Now, a journal‑style
+  timeline with a live "now" marker, plus tasks, projects and a quick note. Step through days
+  with ‹ › or tap a date on the calendar.
+- **Calendar** — a paper‑agenda weekly spread: a grid of day cells (untimed tasks on the
+  left, timed events on the right), scrollable per day, paging two weeks at a time.
 - **Tasks** — grouped into Today / Upcoming / Someday / Completed.
-- **Projects** — cards with progress, status, next action and an optional deadline.
+- **Projects** — cards whose progress is driven by their linked tasks (JIRA‑style), with
+  status, next action and an optional deadline.
 - **Notes** — quick notes you can link to a project, event or task.
 - **Insights** — a calm weekly look‑back (time scheduled, tasks done, workload). No streaks, no pressure.
 
@@ -36,13 +40,37 @@ Choose a look in **Settings** — System, Light, Dark, or one of four fun colors
 
 - A real‑time analog clock right on the dashboard
 - Everything is saved on your device and survives restarts
-- Add anything in a tap with **+ Add** — events, tasks, notes or focus items
+- Add anything in a tap with **+ Add** — events, tasks or notes, on any date you pick
+- Optional **Google‑account sync** — sign in from Settings and your agenda syncs live across devices
 - Search across everything from the top bar
 - Designed landscape‑first for tablets, with a dedicated portrait layout
 
 ## Built with
 
-Kotlin · Jetpack Compose (Material 3) · Room. Runs on Android 8.0 (API 26) and up.
+Kotlin · Jetpack Compose (Material 3) · Room · Firebase (Auth + Cloud Firestore) for sync.
+Runs on Android 8.0 (API 26) and up.
+
+## Firebase setup (required to build)
+
+This repo does **not** include `app/google-services.json` (it's specific to a Firebase
+project and is git‑ignored). To build, create your own free Firebase project and add it:
+
+1. In the [Firebase console](https://console.firebase.google.com/), create a project and add
+   an **Android app** with package name `com.personalagenda.app`.
+2. Under **Authentication → Sign‑in method**, enable **Google**; under **Project settings**,
+   add your signing **SHA‑1** fingerprint (for the debug build, the one from
+   `keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android`).
+3. Create a **Firestore Database**, and publish the rules in [`firestore.rules`](firestore.rules).
+4. Download **`google-services.json`** into the `app/` folder.
+
+Add a SHA‑1 for **each** signing key you use — the debug key **and** your release key — or
+Google Sign‑In will fail on that build. Get the release key's fingerprint with:
+
+```bash
+keytool -list -v -keystore <your-release-keystore>.jks -alias <your-alias>
+```
+
+The app runs fully offline without signing in; Firebase is only used when you sign in to sync.
 
 ## Running from source
 
@@ -75,4 +103,18 @@ _If the build complains about the Java version, point it at JDK 17:_
 ```bash
 JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk-17.jdk/Contents/Home ./gradlew assembleDebug
 ```
+
+### A signed release APK
+
+The release build must be signed with your own keystore (never commit it — this repo
+git‑ignores `*.jks`). The simplest route is **Android Studio → Build → Generate Signed
+App Bundle / APK → APK**, pick your keystore, and choose the `release` variant. The APK
+lands at:
+
+```
+app/build/outputs/apk/release/app-release.apk
+```
+
+Make sure your release key's **SHA‑1 is registered in Firebase** (see *Firebase setup* above),
+otherwise Google sign‑in / sync won't work in the release build.
 

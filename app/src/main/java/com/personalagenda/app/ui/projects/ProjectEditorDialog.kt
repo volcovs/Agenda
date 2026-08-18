@@ -19,13 +19,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -47,7 +45,6 @@ import java.time.LocalDate
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.Locale
-import kotlin.math.roundToInt
 
 private val deadlineFmt = DateTimeFormatter.ofPattern("MMMM d, yyyy", Locale.ENGLISH)
 
@@ -65,7 +62,6 @@ fun ProjectEditorDialog(
     var category by remember { mutableStateOf(initial?.category ?: Category.PROJECTS) }
     var status by remember { mutableStateOf(initial?.status ?: "") }
     var nextAction by remember { mutableStateOf(initial?.nextAction ?: "") }
-    var progress by remember { mutableFloatStateOf(initial?.progress ?: 0f) }
     var deadline by remember { mutableStateOf(initial?.deadline) }
     var showDatePicker by remember { mutableStateOf(false) }
 
@@ -76,7 +72,7 @@ fun ProjectEditorDialog(
         onSave(
             Project(
                 name = name.trim(),
-                progress = progress,
+                progress = initial?.progress ?: 0f, // legacy field; progress now comes from tasks
                 category = category,
                 description = description.trim().ifEmpty { null },
                 status = status.trim().ifEmpty { null },
@@ -123,8 +119,26 @@ fun ProjectEditorDialog(
             UnderlinedField(nextAction, { nextAction = it }, "Next action (optional)", singleLine = true, imeAction = androidx.compose.ui.text.input.ImeAction.Done)
 
             Spacer(Modifier.height(24.dp))
-            FieldLabel("Progress · ${(progress * 100).roundToInt()}%")
-            Slider(value = progress, onValueChange = { progress = it }, valueRange = 0f..1f)
+            // Progress is driven entirely by linked tasks (JIRA-style) — no manual slider.
+            val linkedTotal = initial?.linkedTasksTotal ?: 0
+            if (linkedTotal > 0) {
+                val done = initial?.linkedTasksDone ?: 0
+                FieldLabel("Progress · ${(done * 100 / linkedTotal)}%")
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Driven by linked tasks — $done of $linkedTotal done.",
+                    style = AgendaTheme.type.secondary,
+                    color = colors.textSecondary,
+                )
+            } else {
+                FieldLabel("Progress")
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "No tasks yet — link tasks to this project to track progress.",
+                    style = AgendaTheme.type.secondary,
+                    color = colors.textSecondary,
+                )
+            }
 
             Spacer(Modifier.height(16.dp))
             FieldLabel("Deadline")

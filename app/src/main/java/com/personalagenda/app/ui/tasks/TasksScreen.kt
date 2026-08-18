@@ -33,6 +33,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import com.personalagenda.app.data.DatedTask
+import com.personalagenda.app.data.Project
 import com.personalagenda.app.data.Task
 import com.personalagenda.app.ui.dashboard.QuickAddDialog
 import com.personalagenda.app.ui.dashboard.QuickAddResult
@@ -49,15 +50,18 @@ private val dateFmt = DateTimeFormatter.ofPattern("EEE, MMM d", Locale.ENGLISH)
 fun TasksScreen(
     tasks: List<DatedTask>,
     today: LocalDate,
+    projects: List<Project> = emptyList(),
     onToggle: (Long) -> Unit,
     onRename: (Long, String) -> Unit,
     onDelete: (Long) -> Unit,
+    onSetTaskProject: (Long, Long?) -> Unit = { _, _ -> },
     onQuickAdd: (QuickAddResult) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = AgendaTheme.colors
     var showAdd by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<DatedTask?>(null) }
+    val projectName: (Long?) -> String? = { id -> id?.let { pid -> projects.firstOrNull { it.id == pid }?.name } }
 
     val todayTasks = tasks.filter { !it.done && it.date != null && !it.date.isAfter(today) }
     val upcoming = tasks.filter { !it.done && it.date != null && it.date.isAfter(today) }
@@ -99,23 +103,30 @@ fun TasksScreen(
                     .verticalScroll(rememberScrollState())
                     .padding(bottom = 24.dp),
             ) {
-                TaskGroup("Today", todayTasks, showDate = false, today, onToggle) { editing = it }
-                TaskGroup("Upcoming", upcoming, showDate = true, today, onToggle) { editing = it }
-                TaskGroup("Someday", someday, showDate = false, today, onToggle) { editing = it }
-                TaskGroup("Completed", completed, showDate = false, today, onToggle) { editing = it }
+                TaskGroup("Today", todayTasks, showDate = false, projectName, onToggle) { editing = it }
+                TaskGroup("Upcoming", upcoming, showDate = true, projectName, onToggle) { editing = it }
+                TaskGroup("Someday", someday, showDate = false, projectName, onToggle) { editing = it }
+                TaskGroup("Completed", completed, showDate = false, projectName, onToggle) { editing = it }
             }
         }
     }
 
     if (showAdd) {
-        QuickAddDialog(onDismiss = { showAdd = false }, onSubmit = onQuickAdd)
+        QuickAddDialog(
+            onDismiss = { showAdd = false },
+            onSubmit = onQuickAdd,
+            defaultDate = today,
+            projects = projects,
+        )
     }
 
     editing?.let { dt ->
         TaskEditorDialog(
-            task = Task(text = dt.text, done = dt.done, id = dt.id),
+            task = Task(text = dt.text, done = dt.done, id = dt.id, projectId = dt.projectId),
+            projects = projects,
             onRename = onRename,
             onDelete = onDelete,
+            onSetProject = onSetTaskProject,
             onDismiss = { editing = null },
         )
     }
@@ -126,7 +137,7 @@ private fun TaskGroup(
     label: String,
     items: List<DatedTask>,
     showDate: Boolean,
-    today: LocalDate,
+    projectName: (Long?) -> String?,
     onToggle: (Long) -> Unit,
     onLongPress: (DatedTask) -> Unit,
 ) {
@@ -134,7 +145,13 @@ private fun TaskGroup(
     SectionLabel(label)
     Spacer(Modifier.height(12.dp))
     items.forEach { task ->
-        TaskRow(task, showDate, onClick = { onToggle(task.id) }, onLongClick = { onLongPress(task) })
+        TaskRow(
+            task,
+            showDate,
+            projectName(task.projectId),
+            onClick = { onToggle(task.id) },
+            onLongClick = { onLongPress(task) },
+        )
     }
     Spacer(Modifier.height(28.dp))
 }
@@ -144,6 +161,7 @@ private fun TaskGroup(
 private fun TaskRow(
     task: DatedTask,
     showDate: Boolean,
+    projectName: String?,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
 ) {
@@ -174,10 +192,28 @@ private fun TaskRow(
             color = if (task.done) colors.textFaint else colors.textPrimary,
             textDecoration = if (task.done) TextDecoration.LineThrough else null,
         )
+        if (projectName != null) {
+            Spacer(Modifier.width(10.dp))
+            ProjectTag(projectName)
+        }
         if (showDate && task.date != null) {
             Spacer(Modifier.weight(1f))
             Text(task.date.format(dateFmt), style = AgendaTheme.type.secondary, color = colors.textFaint)
         }
+    }
+}
+
+@Composable
+private fun ProjectTag(name: String) {
+    val colors = AgendaTheme.colors
+    Box(
+        Modifier
+            .clip(RoundedCornerShape(50))
+            .background(colors.surface)
+            .border(1.dp, colors.divider, RoundedCornerShape(50))
+            .padding(horizontal = 10.dp, vertical = 3.dp),
+    ) {
+        Text(name, style = AgendaTheme.type.tiny, color = colors.textSecondary)
     }
 }
 
